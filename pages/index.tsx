@@ -20,7 +20,7 @@ export default function Login() {
     setLoading(false)
 
     if (error) alert(error.message)
-    else alert('Login successful')
+    else window.location.href = '/dashboard'
   }
 
   return (
