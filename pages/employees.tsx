@@ -40,9 +40,11 @@ export default function Employees() {
       return
     }
 
-    const { data: authUser, error } = await supabase.auth.admin.createUser({
+    const { error } = await supabase.from('users').insert({
+      name,
       email,
-      email_confirm: true
+      role,
+      manager_id: role === 'employee' ? managerId || null : null
     })
 
     if (error) {
@@ -50,15 +52,8 @@ export default function Employees() {
       return
     }
 
-    await supabase.from('users').insert({
-      id: authUser.user.id,
-      name,
-      email,
-      role,
-      manager_id: role === 'employee' ? managerId || null : null
-    })
+    alert('Employee record created. Ask user to sign up with this email.')
 
-    alert('Employee created')
     setName('')
     setEmail('')
     setRole('employee')
