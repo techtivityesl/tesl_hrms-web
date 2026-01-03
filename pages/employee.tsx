@@ -18,12 +18,13 @@ export default function EmployeeDashboard() {
   const [loading, setLoading] = useState(true)
   const [userId, setUserId] = useState<string | null>(null)
   const [status, setStatus] = useState<'IN' | 'OUT'>('OUT')
-  const [lastTime, setLastTime] = useState<string | null>(null)
-  const [lastLocation, setLastLocation] = useState<string | null>(null)
 
   const [punchInTime, setPunchInTime] = useState<Date | null>(null)
   const [workedSeconds, setWorkedSeconds] = useState(0)
   const [frozenSeconds, setFrozenSeconds] = useState<number | null>(null)
+
+  const [lastTime, setLastTime] = useState<string | null>(null)
+  const [lastLocation, setLastLocation] = useState<string | null>(null)
 
   const [history, setHistory] = useState<DayRecord[]>([])
 
@@ -51,7 +52,6 @@ export default function EmployeeDashboard() {
 
       setUserId(user.id)
 
-      // Last punch
       const { data: lastPunch } = await supabase
         .from('attendance_logs')
         .select('punch_type, punched_at, location_name')
@@ -74,33 +74,42 @@ export default function EmployeeDashboard() {
         }
       }
 
-      await loadMonthlyHistory(user.id)
+      await loadDailyHistory(user.id)
       setLoading(false)
     }
 
     init()
   }, [])
 
-  // ---------- LIVE CLOCK ----------
+  // ---------- LIVE CLOCK (WITH SECONDS) ----------
   useEffect(() => {
     if (status !== 'IN' || !punchInTime) return
 
-    const interval = setInterval(() => {
+    const timer = setInterval(() => {
       setWorkedSeconds(
         Math.floor((Date.now() - punchInTime.getTime()) / 1000)
       )
     }, 1000)
 
-    return () => clearInterval(interval)
+    return () => clearInterval(timer)
   }, [status, punchInTime])
 
-  const formatTime = (seconds: number) => {
-    const h = Math.floor(seconds / 3600)
-    const m = Math.floor((seconds % 3600) / 60)
-    const s = seconds % 60
+  // ---------- FORMATTERS ----------
+  const formatHMS = (sec: number) => {
+    const h = Math.floor(sec / 3600)
+    const m = Math.floor((sec % 3600) / 60)
+    const s = sec % 60
     return `${h.toString().padStart(2, '0')}:${m
       .toString()
       .padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+  }
+
+  const formatHM = (sec: number) => {
+    const h = Math.floor(sec / 3600)
+    const m = Math.floor((sec % 3600) / 60)
+    return `${h.toString().padStart(2, '0')}:${m
+      .toString()
+      .padStart(2, '0')}`
   }
 
   // ---------- LOCATION ----------
@@ -167,14 +176,14 @@ export default function EmployeeDashboard() {
         setPunchInTime(null)
       }
 
-      await loadMonthlyHistory(userId)
+      await loadDailyHistory(userId)
     } catch (e: any) {
       alert(e)
     }
   }
 
-  // ---------- MONTHLY HISTORY ----------
-  const loadMonthlyHistory = async (uid: string) => {
+  // ---------- DAILY HISTORY (CURRENT MONTH) ----------
+  const loadDailyHistory = async (uid: string) => {
     const start = new Date()
     start.setDate(1)
     start.setHours(0, 0, 0, 0)
@@ -191,21 +200,27 @@ export default function EmployeeDashboard() {
     const map: Record<string, DayRecord> = {}
 
     data.forEach(d => {
-      const date = new Date(d.punched_at).toLocaleDateString()
-      if (!map[date]) map[date] = { date }
+      const day = new Date(d.punched_at).toLocaleDateString()
+      if (!map[day]) map[day] = { date: day }
 
       if (d.punch_type === 'IN') {
-        map[date].inTime = new Date(d.punched_at).toLocaleTimeString()
-        map[date].location = d.location_name
-      } else {
-        map[date].outTime = new Date(d.punched_at).toLocaleTimeString()
-
-        if (map[date].inTime) {
-          const diff =
-            new Date(d.punched_at).getTime() -
-            new Date(`${date} ${map[date].inTime}`).getTime()
-          map[date].duration = formatTime(Math.floor(diff / 1000))
+        if (!map[day].inTime) {
+          map[day].inTime = new Date(d.punched_at).toLocaleTimeString()
+          map[day].location = d.location_name
         }
+      }
+
+      if (d.punch_type === 'OUT') {
+        map[day].outTime = new Date(d.punched_at).toLocaleTimeString()
+      }
+    })
+
+    Object.values(map).forEach(d => {
+      if (d.inTime && d.outTime) {
+        const diff =
+          new Date(`${d.date} ${d.outTime}`).getTime() -
+          new Date(`${d.date} ${d.inTime}`).getTime()
+        d.duration = formatHM(Math.floor(diff / 1000))
       }
     })
 
@@ -231,9 +246,9 @@ export default function EmployeeDashboard() {
         <p>
           Worked Time Today:{' '}
           <b>
-            {formatTime(
-              status === 'IN' ? workedSeconds : frozenSeconds || 0
-            )}
+            {status === 'IN'
+              ? formatHMS(workedSeconds)
+              : formatHM(frozenSeconds || 0)}
           </b>
         </p>
       )}
@@ -245,7 +260,7 @@ export default function EmployeeDashboard() {
 
       <br /><br />
 
-      <h3>Current Month Attendance</h3>
+      <h3>Current Month – Day Wise Attendance</h3>
 
       <table border={1} cellPadding={8}>
         <thead>
@@ -253,7 +268,7 @@ export default function EmployeeDashboard() {
             <th>Date</th>
             <th>Punch In</th>
             <th>Punch Out</th>
-            <th>Worked</th>
+            <th>Worked (HH:MM)</th>
             <th>Location</th>
           </tr>
         </thead>
