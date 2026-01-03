@@ -23,6 +23,11 @@ export default function Dashboard() {
     checkSession()
   }, [])
 
+  const logout = async () => {
+    await supabase.auth.signOut()
+    window.location.href = '/'
+  }
+
   if (loading) {
     return <p style={{ padding: 40 }}>Checking session...</p>
   }
@@ -31,6 +36,9 @@ export default function Dashboard() {
     <div style={{ padding: 40 }}>
       <h1>Admin Dashboard</h1>
       <p>Welcome to HRMS</p>
+
+      <br /><br />
+      <button onClick={logout}>Logout</button>
     </div>
   )
 }
