@@ -12,7 +12,10 @@ export default function EmployeeDashboard() {
   const [status, setStatus] = useState<'IN' | 'OUT'>('OUT')
   const [lastTime, setLastTime] = useState<string | null>(null)
   const [lastLocation, setLastLocation] = useState<string | null>(null)
+  const [punchInTime, setPunchInTime] = useState<Date | null>(null)
+  const [workedSeconds, setWorkedSeconds] = useState(0)
 
+  // INIT
   useEffect(() => {
     const init = async () => {
       const { data: sessionData } = await supabase.auth.getSession()
@@ -48,6 +51,14 @@ export default function EmployeeDashboard() {
         setStatus(lastPunch.punch_type === 'IN' ? 'IN' : 'OUT')
         setLastTime(new Date(lastPunch.punched_at).toLocaleString())
         setLastLocation(lastPunch.location_name)
+
+        if (lastPunch.punch_type === 'IN') {
+          const inTime = new Date(lastPunch.punched_at)
+          setPunchInTime(inTime)
+          setWorkedSeconds(
+            Math.floor((Date.now() - inTime.getTime()) / 1000)
+          )
+        }
       }
 
       setLoading(false)
@@ -55,6 +66,29 @@ export default function EmployeeDashboard() {
 
     init()
   }, [])
+
+  // LIVE CLOCK
+  useEffect(() => {
+    if (status !== 'IN' || !punchInTime) return
+
+    const interval = setInterval(() => {
+      setWorkedSeconds(
+        Math.floor((Date.now() - punchInTime.getTime()) / 1000)
+      )
+    }, 1000)
+
+    return () => clearInterval(interval)
+  }, [status, punchInTime])
+
+  const formatTime = (seconds: number) => {
+    const hrs = Math.floor(seconds / 3600)
+    const mins = Math.floor((seconds % 3600) / 60)
+    const secs = seconds % 60
+
+    return `${hrs.toString().padStart(2, '0')}:${mins
+      .toString()
+      .padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+  }
 
   const getLocationWithAddress = (): Promise<{
     lat: number
@@ -105,20 +139,27 @@ export default function EmployeeDashboard() {
 
     try {
       const location = await getLocationWithAddress()
-      const now = new Date().toISOString()
+      const now = new Date()
 
       await supabase.from('attendance_logs').insert({
         user_id: userId,
         punch_type: type,
-        punched_at: now,
+        punched_at: now.toISOString(),
         latitude: location.lat,
         longitude: location.lng,
         location_name: location.address
       })
 
       setStatus(type)
-      setLastTime(new Date(now).toLocaleString())
+      setLastTime(now.toLocaleString())
       setLastLocation(location.address)
+
+      if (type === 'IN') {
+        setPunchInTime(now)
+        setWorkedSeconds(0)
+      } else {
+        setPunchInTime(null)
+      }
     } catch (err: any) {
       alert(err)
     }
@@ -148,6 +189,12 @@ export default function EmployeeDashboard() {
       {lastLocation && (
         <p>
           Last Punch Location: <b>{lastLocation}</b>
+        </p>
+      )}
+
+      {status === 'IN' && (
+        <p>
+          Working Time Today: <b>{formatTime(workedSeconds)}</b>
         </p>
       )}
 
