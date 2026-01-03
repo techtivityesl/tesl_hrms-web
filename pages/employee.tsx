@@ -14,7 +14,6 @@ export default function EmployeeDashboard() {
   useEffect(() => {
     const init = async () => {
       const { data: sessionData } = await supabase.auth.getSession()
-
       if (!sessionData.session) {
         window.location.href = '/'
         return
@@ -43,38 +42,63 @@ export default function EmployeeDashboard() {
         .limit(1)
         .single()
 
-      if (lastPunch?.punch_type === 'IN') {
-        setStatus('IN')
-      } else {
-        setStatus('OUT')
-      }
-
+      setStatus(lastPunch?.punch_type === 'IN' ? 'IN' : 'OUT')
       setLoading(false)
     }
 
     init()
   }, [])
 
-  const getLocation = (): Promise<{ lat: number; lng: number }> => {
+  const getLocationWithAddress = (): Promise<{
+    lat: number
+    lng: number
+    address: string
+  }> => {
     return new Promise((resolve, reject) => {
       if (!navigator.geolocation) {
         reject('Geolocation not supported')
+        return
       }
 
       navigator.geolocation.getCurrentPosition(
-        position => {
-          resolve({
-            lat: position.coords.latitude,
-            lng: position.coords.longitude
-          })
+        async position => {
+          const lat = position.coords.latitude
+          const lng = position.coords.longitude
+
+          try {
+            const res = await fetch(
+              `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`
+            )
+            const data = await res.json()
+
+            const addressParts = data.address || {}
+            const area =
+              addressParts.suburb ||
+              addressParts.neighbourhood ||
+              addressParts.village ||
+              ''
+            const city =
+              addressParts.city ||
+              addressParts.town ||
+              addressParts.county ||
+              ''
+            const state = addressParts.state || ''
+
+            const readableAddress = [area, city, state]
+              .filter(Boolean)
+              .join(', ')
+
+            resolve({
+              lat,
+              lng,
+              address: readableAddress || 'Location unavailable'
+            })
+          } catch {
+            reject('Unable to fetch location details')
+          }
         },
-        error => {
-          reject('Location permission denied')
-        },
-        {
-          enableHighAccuracy: true,
-          timeout: 10000
-        }
+        () => reject('Location permission denied'),
+        { enableHighAccuracy: true, timeout: 10000 }
       )
     })
   }
@@ -83,18 +107,19 @@ export default function EmployeeDashboard() {
     if (!userId) return
 
     try {
-      const location = await getLocation()
+      const location = await getLocationWithAddress()
 
       await supabase.from('attendance_logs').insert({
         user_id: userId,
         punch_type: type,
         punched_at: new Date().toISOString(),
         latitude: location.lat,
-        longitude: location.lng
+        longitude: location.lng,
+        location_name: location.address
       })
 
       setStatus(type)
-      alert(`Punched ${type} with location`)
+      alert(`Punched ${type} at ${location.address}`)
     } catch (err: any) {
       alert(err)
     }
@@ -105,9 +130,7 @@ export default function EmployeeDashboard() {
     window.location.href = '/'
   }
 
-  if (loading) {
-    return <p style={{ padding: 40 }}>Loading...</p>
-  }
+  if (loading) return <p style={{ padding: 40 }}>Loading...</p>
 
   return (
     <div style={{ padding: 40 }}>
