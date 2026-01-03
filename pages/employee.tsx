@@ -10,6 +10,8 @@ export default function EmployeeDashboard() {
   const [loading, setLoading] = useState(true)
   const [userId, setUserId] = useState<string | null>(null)
   const [status, setStatus] = useState<'IN' | 'OUT'>('OUT')
+  const [lastTime, setLastTime] = useState<string | null>(null)
+  const [lastLocation, setLastLocation] = useState<string | null>(null)
 
   useEffect(() => {
     const init = async () => {
@@ -36,13 +38,18 @@ export default function EmployeeDashboard() {
 
       const { data: lastPunch } = await supabase
         .from('attendance_logs')
-        .select('punch_type')
+        .select('punch_type, punched_at, location_name')
         .eq('user_id', user.id)
         .order('punched_at', { ascending: false })
         .limit(1)
         .single()
 
-      setStatus(lastPunch?.punch_type === 'IN' ? 'IN' : 'OUT')
+      if (lastPunch) {
+        setStatus(lastPunch.punch_type === 'IN' ? 'IN' : 'OUT')
+        setLastTime(new Date(lastPunch.punched_at).toLocaleString())
+        setLastLocation(lastPunch.location_name)
+      }
+
       setLoading(false)
     }
 
@@ -71,27 +78,17 @@ export default function EmployeeDashboard() {
             )
             const data = await res.json()
 
-            const addressParts = data.address || {}
-            const area =
-              addressParts.suburb ||
-              addressParts.neighbourhood ||
-              addressParts.village ||
-              ''
-            const city =
-              addressParts.city ||
-              addressParts.town ||
-              addressParts.county ||
-              ''
-            const state = addressParts.state || ''
+            const a = data.address || {}
+            const area = a.suburb || a.neighbourhood || a.village || ''
+            const city = a.city || a.town || a.county || ''
+            const state = a.state || ''
 
-            const readableAddress = [area, city, state]
-              .filter(Boolean)
-              .join(', ')
+            const readable = [area, city, state].filter(Boolean).join(', ')
 
             resolve({
               lat,
               lng,
-              address: readableAddress || 'Location unavailable'
+              address: readable || 'Location unavailable'
             })
           } catch {
             reject('Unable to fetch location details')
@@ -108,18 +105,20 @@ export default function EmployeeDashboard() {
 
     try {
       const location = await getLocationWithAddress()
+      const now = new Date().toISOString()
 
       await supabase.from('attendance_logs').insert({
         user_id: userId,
         punch_type: type,
-        punched_at: new Date().toISOString(),
+        punched_at: now,
         latitude: location.lat,
         longitude: location.lng,
         location_name: location.address
       })
 
       setStatus(type)
-      alert(`Punched ${type} at ${location.address}`)
+      setLastTime(new Date(now).toLocaleString())
+      setLastLocation(location.address)
     } catch (err: any) {
       alert(err)
     }
@@ -136,7 +135,23 @@ export default function EmployeeDashboard() {
     <div style={{ padding: 40 }}>
       <h1>Employee Dashboard</h1>
 
-      <p>Status: <b>{status}</b></p>
+      <p>
+        Current Status: <b>{status}</b>
+      </p>
+
+      {lastTime && (
+        <p>
+          Last Punch Time: <b>{lastTime}</b>
+        </p>
+      )}
+
+      {lastLocation && (
+        <p>
+          Last Punch Location: <b>{lastLocation}</b>
+        </p>
+      )}
+
+      <br />
 
       {status === 'OUT' && (
         <button onClick={() => punch('IN')}>Punch In</button>
