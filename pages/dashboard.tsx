@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
@@ -6,39 +6,40 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
-export default function Dashboard() {
-  const [loading, setLoading] = useState(true)
-
+export default function DashboardRouter() {
   useEffect(() => {
-    const checkSession = async () => {
-      const { data } = await supabase.auth.getSession()
+    const routeUser = async () => {
+      const { data: sessionData } = await supabase.auth.getSession()
 
-      if (!data.session) {
+      if (!sessionData.session) {
         window.location.href = '/'
+        return
+      }
+
+      const authUserId = sessionData.session.user.id
+
+      const { data, error } = await supabase
+        .from('users')
+        .select('role')
+        .eq('auth_user_id', authUserId)
+        .single()
+
+      if (error || !data) {
+        alert('User role not found')
+        return
+      }
+
+      if (data.role === 'admin') {
+        window.location.href = '/admin'
+      } else if (data.role === 'manager') {
+        window.location.href = '/manager'
       } else {
-        setLoading(false)
+        window.location.href = '/employee'
       }
     }
 
-    checkSession()
+    routeUser()
   }, [])
 
-  const logout = async () => {
-    await supabase.auth.signOut()
-    window.location.href = '/'
-  }
-
-  if (loading) {
-    return <p style={{ padding: 40 }}>Checking session...</p>
-  }
-
-  return (
-    <div style={{ padding: 40 }}>
-      <h1>Admin Dashboard</h1>
-      <p>Welcome to HRMS</p>
-
-      <br /><br />
-      <button onClick={logout}>Logout</button>
-    </div>
-  )
+  return <p style={{ padding: 40 }}>Routing user...</p>
 }
