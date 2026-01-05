@@ -15,6 +15,11 @@ type LeaveType = {
   allows_half_day: boolean
 }
 
+type LeaveBalance = {
+  leave_type_id: string
+  balance: number
+}
+
 type Leave = {
   id: string
   from_date: string
@@ -31,7 +36,10 @@ export default function EmployeeLeave() {
   const [userId, setUserId] = useState<string | null>(null)
 
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([])
+  const [balances, setBalances] = useState<LeaveBalance[]>([])
+
   const [selectedLeaveType, setSelectedLeaveType] = useState<string>('')
+  const [halfDay, setHalfDay] = useState(false)
 
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
@@ -61,6 +69,7 @@ export default function EmployeeLeave() {
       setUserId(user.id)
 
       await loadLeaveTypes()
+      await loadBalances(user.id)
       await loadLeaves(user.id)
 
       setLoading(false)
@@ -77,6 +86,18 @@ export default function EmployeeLeave() {
       .order('name')
 
     if (data) setLeaveTypes(data)
+  }
+
+  const loadBalances = async (uid: string) => {
+    const year = new Date().getFullYear()
+
+    const { data } = await supabase
+      .from('leave_balances')
+      .select('leave_type_id, balance')
+      .eq('user_id', uid)
+      .eq('year', year)
+
+    if (data) setBalances(data)
   }
 
   const loadLeaves = async (uid: string) => {
@@ -96,6 +117,11 @@ export default function EmployeeLeave() {
     if (data) setLeaves(data as any)
   }
 
+  const getBalance = (leaveTypeId: string) => {
+    const b = balances.find(x => x.leave_type_id === leaveTypeId)
+    return b ? b.balance : 0
+  }
+
   // ---------- APPLY LEAVE ----------
   const applyLeave = async () => {
     if (!userId || !selectedLeaveType || !fromDate || !toDate) {
@@ -111,9 +137,23 @@ export default function EmployeeLeave() {
     const leaveType = leaveTypes.find(l => l.id === selectedLeaveType)
     if (!leaveType) return
 
-    // SOL rule: only one day
+    const balance = getBalance(selectedLeaveType)
+
+    // Balance checks (CL / EL / CO / SOL)
+    if (['CL', 'EL', 'CO', 'SOL'].includes(leaveType.code) && balance <= 0) {
+      alert('Insufficient leave balance')
+      return
+    }
+
+    // SOL rule: single day only
     if (leaveType.code === 'SOL' && fromDate !== toDate) {
-      alert('Special Occasion Leave can be applied for only one day')
+      alert('Special Occasion Leave is allowed for only one day')
+      return
+    }
+
+    // Half-day allowed only where configured
+    if (halfDay && !leaveType.allows_half_day) {
+      alert('Half-day not allowed for this leave type')
       return
     }
 
@@ -130,9 +170,12 @@ export default function EmployeeLeave() {
     setToDate('')
     setReason('')
     setSelectedLeaveType('')
+    setHalfDay(false)
 
     await loadLeaves(userId)
   }
+
+  const selectedLeave = leaveTypes.find(l => l.id === selectedLeaveType)
 
   if (loading) return <Layout>Loading...</Layout>
 
@@ -153,10 +196,24 @@ export default function EmployeeLeave() {
             <option value="">Select Leave Type</option>
             {leaveTypes.map(l => (
               <option key={l.id} value={l.id}>
-                {l.name} ({l.code})
+                {l.name} ({l.code}) — Balance: {getBalance(l.id)}
               </option>
             ))}
           </select>
+
+          {/* Half Day */}
+          {selectedLeave?.allows_half_day && (
+            <div style={{ marginTop: 12 }}>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={halfDay}
+                  onChange={e => setHalfDay(e.target.checked)}
+                />{' '}
+                Half Day
+              </label>
+            </div>
+          )}
 
           <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
             <input
@@ -168,6 +225,7 @@ export default function EmployeeLeave() {
               type="date"
               value={toDate}
               onChange={e => setToDate(e.target.value)}
+              disabled={halfDay}
             />
           </div>
 
