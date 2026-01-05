@@ -17,8 +17,8 @@ type DayRecord = {
 export default function EmployeeDashboard() {
   const [loading, setLoading] = useState(true)
   const [userId, setUserId] = useState<string | null>(null)
-  const [status, setStatus] = useState<'IN' | 'OUT'>('OUT')
 
+  const [status, setStatus] = useState<'IN' | 'OUT'>('OUT')
   const [punchInTime, setPunchInTime] = useState<Date | null>(null)
   const [workedSeconds, setWorkedSeconds] = useState(0)
   const [frozenSeconds, setFrozenSeconds] = useState<number | null>(null)
@@ -81,7 +81,7 @@ export default function EmployeeDashboard() {
     init()
   }, [])
 
-  // ---------- LIVE CLOCK (WITH SECONDS) ----------
+  // ---------- LIVE CLOCK ----------
   useEffect(() => {
     if (status !== 'IN' || !punchInTime) return
 
@@ -94,7 +94,6 @@ export default function EmployeeDashboard() {
     return () => clearInterval(timer)
   }, [status, punchInTime])
 
-  // ---------- FORMATTERS ----------
   const formatHMS = (sec: number) => {
     const h = Math.floor(sec / 3600)
     const m = Math.floor((sec % 3600) / 60)
@@ -182,7 +181,7 @@ export default function EmployeeDashboard() {
     }
   }
 
-  // ---------- DAILY HISTORY (CURRENT MONTH) ----------
+  // ---------- DAILY HISTORY ----------
   const loadDailyHistory = async (uid: string) => {
     const start = new Date()
     start.setDate(1)
@@ -203,11 +202,9 @@ export default function EmployeeDashboard() {
       const day = new Date(d.punched_at).toLocaleDateString()
       if (!map[day]) map[day] = { date: day }
 
-      if (d.punch_type === 'IN') {
-        if (!map[day].inTime) {
-          map[day].inTime = new Date(d.punched_at).toLocaleTimeString()
-          map[day].location = d.location_name
-        }
+      if (d.punch_type === 'IN' && !map[day].inTime) {
+        map[day].inTime = new Date(d.punched_at).toLocaleTimeString()
+        map[day].location = d.location_name
       }
 
       if (d.punch_type === 'OUT') {
@@ -232,61 +229,101 @@ export default function EmployeeDashboard() {
     window.location.href = '/'
   }
 
-  if (loading) return <p style={{ padding: 40 }}>Loading...</p>
+  if (loading) {
+    return <div className="p-8 text-center">Loading...</div>
+  }
 
   return (
-    <div style={{ padding: 40 }}>
-      <h1>Employee Dashboard</h1>
+    <div className="min-h-screen bg-offwhite p-6">
+      <div className="max-w-6xl mx-auto space-y-6">
 
-      <p>Status: <b>{status}</b></p>
-      {lastTime && <p>Last Punch Time: <b>{lastTime}</b></p>}
-      {lastLocation && <p>Last Location: <b>{lastLocation}</b></p>}
+        {/* Header */}
+        <div className="flex justify-between items-center">
+          <h1 className="text-2xl font-semibold">Employee Dashboard</h1>
+          <button onClick={logout} className="text-red-500 text-sm">
+            Logout
+          </button>
+        </div>
 
-      {(status === 'IN' || frozenSeconds !== null) && (
-        <p>
-          Worked Time Today:{' '}
-          <b>
-            {status === 'IN'
-              ? formatHMS(workedSeconds)
-              : formatHM(frozenSeconds || 0)}
-          </b>
-        </p>
-      )}
+        {/* Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="bg-white p-5 rounded-xl shadow">
+            <p className="text-sm text-muted">Status</p>
+            <p className="text-xl font-bold text-primary">{status}</p>
+          </div>
 
-      <br />
+          <div className="bg-white p-5 rounded-xl shadow">
+            <p className="text-sm text-muted">Worked Today</p>
+            <p className="text-xl font-bold">
+              {status === 'IN'
+                ? formatHMS(workedSeconds)
+                : formatHM(frozenSeconds || 0)}
+            </p>
+          </div>
 
-      {status === 'OUT' && <button onClick={() => punch('IN')}>Punch In</button>}
-      {status === 'IN' && <button onClick={() => punch('OUT')}>Punch Out</button>}
+          <div className="bg-white p-5 rounded-xl shadow">
+            <p className="text-sm text-muted">Last Punch</p>
+            <p className="text-sm">{lastTime || '-'}</p>
+          </div>
 
-      <br /><br />
+          <div className="bg-white p-5 rounded-xl shadow">
+            <p className="text-sm text-muted">Location</p>
+            <p className="text-sm">{lastLocation || '-'}</p>
+          </div>
+        </div>
 
-      <h3>Current Month – Day Wise Attendance</h3>
+        {/* Punch */}
+        <div className="bg-white p-6 rounded-xl shadow text-center">
+          {status === 'OUT' ? (
+            <button
+              onClick={() => punch('IN')}
+              className="bg-primary text-white px-8 py-2 rounded-lg"
+            >
+              Punch In
+            </button>
+          ) : (
+            <button
+              onClick={() => punch('OUT')}
+              className="bg-secondary text-white px-8 py-2 rounded-lg"
+            >
+              Punch Out
+            </button>
+          )}
+        </div>
 
-      <table border={1} cellPadding={8}>
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Punch In</th>
-            <th>Punch Out</th>
-            <th>Worked (HH:MM)</th>
-            <th>Location</th>
-          </tr>
-        </thead>
-        <tbody>
-          {history.map(h => (
-            <tr key={h.date}>
-              <td>{h.date}</td>
-              <td>{h.inTime || '-'}</td>
-              <td>{h.outTime || '-'}</td>
-              <td>{h.duration || '-'}</td>
-              <td>{h.location || '-'}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+        {/* Table */}
+        <div className="bg-white p-6 rounded-xl shadow">
+          <h2 className="text-lg font-semibold mb-4">
+            Current Month – Day Wise Attendance
+          </h2>
 
-      <br /><br />
-      <button onClick={logout}>Logout</button>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border">
+              <thead className="bg-offwhite">
+                <tr>
+                  <th className="p-2 border">Date</th>
+                  <th className="p-2 border">In</th>
+                  <th className="p-2 border">Out</th>
+                  <th className="p-2 border">Hours</th>
+                  <th className="p-2 border">Location</th>
+                </tr>
+              </thead>
+              <tbody>
+                {history.map(h => (
+                  <tr key={h.date} className="text-center">
+                    <td className="p-2 border">{h.date}</td>
+                    <td className="p-2 border">{h.inTime || '-'}</td>
+                    <td className="p-2 border">{h.outTime || '-'}</td>
+                    <td className="p-2 border">{h.duration || '-'}</td>
+                    <td className="p-2 border">{h.location || '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
     </div>
   )
 }
