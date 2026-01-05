@@ -9,26 +9,36 @@ type Props = {
 export default function Layout({ children }: Props) {
   const router = useRouter()
 
+  const isActive = (path: string) => {
+    return router.pathname === path ? styles.active : ''
+  }
+
   return (
     <div className={styles.layout}>
       <aside className={styles.sidebar}>
         <div className={styles.logo}>HRMS</div>
 
         <nav className={styles.nav}>
+          {/* Dashboard */}
           <Link
             href="/employee"
-            className={`${styles.navItem} ${
-              router.pathname === '/employee' ? styles.active : ''
-            }`}
+            className={`${styles.navItem} ${isActive('/employee')}`}
           >
             Dashboard
           </Link>
 
+          {/* Attendance */}
+          <Link
+            href="/employee-attendance"
+            className={`${styles.navItem} ${isActive('/employee-attendance')}`}
+          >
+            Attendance
+          </Link>
+
+          {/* Leaves */}
           <Link
             href="/employee-leave"
-            className={`${styles.navItem} ${
-              router.pathname === '/employee-leave' ? styles.active : ''
-            }`}
+            className={`${styles.navItem} ${isActive('/employee-leave')}`}
           >
             My Leaves
           </Link>
