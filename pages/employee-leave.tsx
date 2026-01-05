@@ -8,23 +8,38 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
+type LeaveType = {
+  id: string
+  code: string
+  name: string
+  allows_half_day: boolean
+}
+
 type Leave = {
   id: string
   from_date: string
   to_date: string
   reason: string
   status: string
+  leave_types: {
+    code: string
+    name: string
+  }
 }
 
 export default function EmployeeLeave() {
   const [userId, setUserId] = useState<string | null>(null)
+
+  const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([])
+  const [selectedLeaveType, setSelectedLeaveType] = useState<string>('')
+
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
   const [reason, setReason] = useState('')
   const [leaves, setLeaves] = useState<Leave[]>([])
   const [loading, setLoading] = useState(true)
 
-  // -------- INIT --------
+  // ---------- INIT ----------
   useEffect(() => {
     const init = async () => {
       const { data } = await supabase.auth.getSession()
@@ -44,27 +59,47 @@ export default function EmployeeLeave() {
       if (!user) return
 
       setUserId(user.id)
+
+      await loadLeaveTypes()
       await loadLeaves(user.id)
+
       setLoading(false)
     }
 
     init()
   }, [])
 
+  const loadLeaveTypes = async () => {
+    const { data } = await supabase
+      .from('leave_types')
+      .select('id, code, name, allows_half_day')
+      .eq('active', true)
+      .order('name')
+
+    if (data) setLeaveTypes(data)
+  }
+
   const loadLeaves = async (uid: string) => {
     const { data } = await supabase
       .from('leave_requests')
-      .select('*')
+      .select(`
+        id,
+        from_date,
+        to_date,
+        reason,
+        status,
+        leave_types ( code, name )
+      `)
       .eq('user_id', uid)
       .order('created_at', { ascending: false })
 
-    if (data) setLeaves(data)
+    if (data) setLeaves(data as any)
   }
 
-  // -------- APPLY LEAVE --------
+  // ---------- APPLY LEAVE ----------
   const applyLeave = async () => {
-    if (!userId || !fromDate || !toDate) {
-      alert('Please fill all fields')
+    if (!userId || !selectedLeaveType || !fromDate || !toDate) {
+      alert('Please fill all required fields')
       return
     }
 
@@ -73,8 +108,18 @@ export default function EmployeeLeave() {
       return
     }
 
+    const leaveType = leaveTypes.find(l => l.id === selectedLeaveType)
+    if (!leaveType) return
+
+    // SOL rule: only one day
+    if (leaveType.code === 'SOL' && fromDate !== toDate) {
+      alert('Special Occasion Leave can be applied for only one day')
+      return
+    }
+
     await supabase.from('leave_requests').insert({
       user_id: userId,
+      leave_type_id: selectedLeaveType,
       from_date: fromDate,
       to_date: toDate,
       reason,
@@ -84,6 +129,7 @@ export default function EmployeeLeave() {
     setFromDate('')
     setToDate('')
     setReason('')
+    setSelectedLeaveType('')
 
     await loadLeaves(userId)
   }
@@ -98,6 +144,19 @@ export default function EmployeeLeave() {
         {/* Apply Leave */}
         <div className={styles.card} style={{ marginBottom: 24 }}>
           <h3>Apply Leave</h3>
+
+          <select
+            value={selectedLeaveType}
+            onChange={e => setSelectedLeaveType(e.target.value)}
+            style={{ marginTop: 12, width: '100%' }}
+          >
+            <option value="">Select Leave Type</option>
+            {leaveTypes.map(l => (
+              <option key={l.id} value={l.id}>
+                {l.name} ({l.code})
+              </option>
+            ))}
+          </select>
 
           <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
             <input
@@ -133,6 +192,7 @@ export default function EmployeeLeave() {
           <table className={styles.table}>
             <thead>
               <tr>
+                <th>Type</th>
                 <th>From</th>
                 <th>To</th>
                 <th>Reason</th>
@@ -142,6 +202,7 @@ export default function EmployeeLeave() {
             <tbody>
               {leaves.map(l => (
                 <tr key={l.id}>
+                  <td>{l.leave_types?.name}</td>
                   <td>{l.from_date}</td>
                   <td>{l.to_date}</td>
                   <td>{l.reason || '-'}</td>
@@ -150,7 +211,7 @@ export default function EmployeeLeave() {
               ))}
               {leaves.length === 0 && (
                 <tr>
-                  <td colSpan={4}>No leave requests</td>
+                  <td colSpan={5}>No leave requests</td>
                 </tr>
               )}
             </tbody>
