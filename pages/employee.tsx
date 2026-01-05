@@ -15,10 +15,33 @@ type Notification = {
   created_at: string
 }
 
+type Attendance = {
+  punch_type: string
+  punched_at: string
+  location_name: string
+}
+
 export default function EmployeeDashboard() {
   const [loading, setLoading] = useState(true)
-  const [notifications, setNotifications] = useState<Notification[]>([])
   const [userId, setUserId] = useState<string | null>(null)
+
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [status, setStatus] = useState<'IN' | 'OUT'>('OUT')
+  const [lastPunch, setLastPunch] = useState<string | null>(null)
+  const [location, setLocation] = useState<string | null>(null)
+  const [workedSeconds, setWorkedSeconds] = useState(0)
+  const [attendance, setAttendance] = useState<Attendance[]>([])
+
+  // ⏱ Live clock
+  useEffect(() => {
+    let timer: any
+    if (status === 'IN') {
+      timer = setInterval(() => {
+        setWorkedSeconds(s => s + 1)
+      }, 1000)
+    }
+    return () => clearInterval(timer)
+  }, [status])
 
   useEffect(() => {
     const init = async () => {
@@ -39,7 +62,10 @@ export default function EmployeeDashboard() {
       if (!user) return
 
       setUserId(user.id)
+
       await loadNotifications(user.id)
+      await loadAttendance(user.id)
+
       setLoading(false)
     }
 
@@ -57,29 +83,56 @@ export default function EmployeeDashboard() {
     if (data) setNotifications(data)
   }
 
-  if (loading) {
-    return <Layout>Loading...</Layout>
+  const loadAttendance = async (uid: string) => {
+    const { data } = await supabase
+      .from('attendance_logs')
+      .select('*')
+      .eq('user_id', uid)
+      .order('punched_at', { ascending: false })
+
+    if (!data || data.length === 0) return
+
+    setAttendance(data)
+
+    const last = data[0]
+    setLastPunch(last.punched_at)
+    setLocation(last.location_name)
+
+    if (last.punch_type === 'IN') {
+      setStatus('IN')
+    } else {
+      setStatus('OUT')
+    }
   }
+
+  const formatTime = (seconds: number) => {
+    const h = Math.floor(seconds / 3600)
+    const m = Math.floor((seconds % 3600) / 60)
+    const s = seconds % 60
+    return `${h.toString().padStart(2, '0')}:${m
+      .toString()
+      .padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+  }
+
+  if (loading) return <Layout>Loading...</Layout>
 
   return (
     <Layout>
       <div className={styles.page}>
         <h1 className={styles.title}>Employee Dashboard</h1>
 
-        {/* Notifications */}
+        {/* 🔔 Notifications */}
         {notifications.length > 0 && (
-          <div className={styles.card} style={{ marginBottom: 24 }}>
+          <div className={styles.card}>
             <h3>Notifications</h3>
-
             {notifications.map(n => (
               <div
                 key={n.id}
                 style={{
-                  padding: '10px 12px',
-                  marginTop: 8,
+                  background: '#e8f5e9',
+                  padding: 10,
                   borderRadius: 6,
-                  background: n.read ? '#f1f1f1' : '#e8f5e9',
-                  fontSize: 14
+                  marginTop: 8
                 }}
               >
                 {n.message}
@@ -88,9 +141,35 @@ export default function EmployeeDashboard() {
           </div>
         )}
 
-        {/* Placeholder for other dashboard widgets */}
-        <div className={styles.card}>
-          <p>Welcome to HRMS 👋</p>
+        {/* ⏱ Attendance */}
+        <div className={styles.card} style={{ marginTop: 24 }}>
+          <p><strong>Status:</strong> {status}</p>
+          <p><strong>Worked Today:</strong> {formatTime(workedSeconds)}</p>
+          {lastPunch && <p><strong>Last Punch:</strong> {new Date(lastPunch).toLocaleString()}</p>}
+          {location && <p><strong>Location:</strong> {location}</p>}
+        </div>
+
+        {/* 📅 History */}
+        <div className={styles.card} style={{ marginTop: 24 }}>
+          <h3>Attendance History</h3>
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th>Time</th>
+                <th>Location</th>
+              </tr>
+            </thead>
+            <tbody>
+              {attendance.map((a, i) => (
+                <tr key={i}>
+                  <td>{a.punch_type}</td>
+                  <td>{new Date(a.punched_at).toLocaleString()}</td>
+                  <td>{a.location_name}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     </Layout>
