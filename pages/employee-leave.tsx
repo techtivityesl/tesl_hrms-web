@@ -1,3 +1,4 @@
+// --- same imports ---
 import Layout from '../components/Layout'
 import styles from '../styles/employee.module.css'
 import { useEffect, useState } from 'react'
@@ -8,6 +9,7 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
+// --- same types ---
 type LeaveType = {
   id: string
   code: string
@@ -47,7 +49,6 @@ export default function EmployeeLeave() {
   const [leaves, setLeaves] = useState<Leave[]>([])
   const [loading, setLoading] = useState(true)
 
-  // ---------- INIT ----------
   useEffect(() => {
     const init = async () => {
       const { data } = await supabase.auth.getSession()
@@ -67,11 +68,9 @@ export default function EmployeeLeave() {
       if (!user) return
 
       setUserId(user.id)
-
       await loadLeaveTypes()
       await loadBalances(user.id)
       await loadLeaves(user.id)
-
       setLoading(false)
     }
 
@@ -83,37 +82,25 @@ export default function EmployeeLeave() {
       .from('leave_types')
       .select('id, code, name, allows_half_day')
       .eq('active', true)
-      .order('name')
-
     if (data) setLeaveTypes(data)
   }
 
   const loadBalances = async (uid: string) => {
     const year = new Date().getFullYear()
-
     const { data } = await supabase
       .from('leave_balances')
       .select('leave_type_id, balance')
       .eq('user_id', uid)
       .eq('year', year)
-
     if (data) setBalances(data)
   }
 
   const loadLeaves = async (uid: string) => {
     const { data } = await supabase
       .from('leave_requests')
-      .select(`
-        id,
-        from_date,
-        to_date,
-        reason,
-        status,
-        leave_types ( code, name )
-      `)
+      .select(`id, from_date, to_date, reason, status, leave_types ( name )`)
       .eq('user_id', uid)
       .order('created_at', { ascending: false })
-
     if (data) setLeaves(data as any)
   }
 
@@ -122,15 +109,9 @@ export default function EmployeeLeave() {
     return b ? b.balance : 0
   }
 
-  // ---------- APPLY LEAVE ----------
   const applyLeave = async () => {
     if (!userId || !selectedLeaveType || !fromDate || !toDate) {
       alert('Please fill all required fields')
-      return
-    }
-
-    if (fromDate > toDate) {
-      alert('From date cannot be after To date')
       return
     }
 
@@ -139,24 +120,22 @@ export default function EmployeeLeave() {
 
     const balance = getBalance(selectedLeaveType)
 
-    // Balance checks (CL / EL / CO / SOL)
     if (['CL', 'EL', 'CO', 'SOL'].includes(leaveType.code) && balance <= 0) {
       alert('Insufficient leave balance')
       return
     }
 
-    // SOL rule: single day only
     if (leaveType.code === 'SOL' && fromDate !== toDate) {
       alert('Special Occasion Leave is allowed for only one day')
       return
     }
 
-    // Half-day allowed only where configured
     if (halfDay && !leaveType.allows_half_day) {
       alert('Half-day not allowed for this leave type')
       return
     }
 
+    // 1️⃣ Create leave request
     await supabase.from('leave_requests').insert({
       user_id: userId,
       leave_type_id: selectedLeaveType,
@@ -166,6 +145,12 @@ export default function EmployeeLeave() {
       status: 'PENDING'
     })
 
+    // 2️⃣ Create notification
+    await supabase.from('notifications').insert({
+      user_id: userId,
+      message: 'Leave request sent to your Reporting Manager for approval'
+    })
+
     setFromDate('')
     setToDate('')
     setReason('')
@@ -173,54 +158,47 @@ export default function EmployeeLeave() {
     setHalfDay(false)
 
     await loadLeaves(userId)
+    alert('Leave applied successfully')
   }
 
-  const selectedLeave = leaveTypes.find(l => l.id === selectedLeaveType)
-
   if (loading) return <Layout>Loading...</Layout>
+
+  const selectedLeave = leaveTypes.find(l => l.id === selectedLeaveType)
 
   return (
     <Layout>
       <div className={styles.page}>
         <h1 className={styles.title}>My Leaves</h1>
 
-        {/* Apply Leave */}
-        <div className={styles.card} style={{ marginBottom: 24 }}>
+        <div className={styles.card}>
           <h3>Apply Leave</h3>
 
           <select
             value={selectedLeaveType}
             onChange={e => setSelectedLeaveType(e.target.value)}
-            style={{ marginTop: 12, width: '100%' }}
+            style={{ width: '100%', marginTop: 12 }}
           >
             <option value="">Select Leave Type</option>
             {leaveTypes.map(l => (
               <option key={l.id} value={l.id}>
-                {l.name} ({l.code}) — Balance: {getBalance(l.id)}
+                {l.name} ({l.code}) – Balance: {getBalance(l.id)}
               </option>
             ))}
           </select>
 
-          {/* Half Day */}
           {selectedLeave?.allows_half_day && (
-            <div style={{ marginTop: 12 }}>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={halfDay}
-                  onChange={e => setHalfDay(e.target.checked)}
-                />{' '}
-                Half Day
-              </label>
-            </div>
+            <label style={{ display: 'block', marginTop: 10 }}>
+              <input
+                type="checkbox"
+                checked={halfDay}
+                onChange={e => setHalfDay(e.target.checked)}
+              />{' '}
+              Half Day
+            </label>
           )}
 
           <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
-            <input
-              type="date"
-              value={fromDate}
-              onChange={e => setFromDate(e.target.value)}
-            />
+            <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} />
             <input
               type="date"
               value={toDate}
@@ -236,44 +214,9 @@ export default function EmployeeLeave() {
             style={{ width: '100%', marginTop: 12 }}
           />
 
-          <button
-            className={styles.punchBtn}
-            style={{ marginTop: 12 }}
-            onClick={applyLeave}
-          >
+          <button className={styles.punchBtn} style={{ marginTop: 12 }} onClick={applyLeave}>
             Apply Leave
           </button>
-        </div>
-
-        {/* Leave List */}
-        <div className={styles.tableBox}>
-          <table className={styles.table}>
-            <thead>
-              <tr>
-                <th>Type</th>
-                <th>From</th>
-                <th>To</th>
-                <th>Reason</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {leaves.map(l => (
-                <tr key={l.id}>
-                  <td>{l.leave_types?.name}</td>
-                  <td>{l.from_date}</td>
-                  <td>{l.to_date}</td>
-                  <td>{l.reason || '-'}</td>
-                  <td>{l.status}</td>
-                </tr>
-              ))}
-              {leaves.length === 0 && (
-                <tr>
-                  <td colSpan={5}>No leave requests</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
         </div>
       </div>
     </Layout>
