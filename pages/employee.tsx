@@ -30,6 +30,7 @@ export default function EmployeeDashboard() {
 
   const [history, setHistory] = useState<DayRecord[]>([])
 
+  // ---------- INIT ----------
   useEffect(() => {
     const init = async () => {
       const { data } = await supabase.auth.getSession()
@@ -79,13 +80,16 @@ export default function EmployeeDashboard() {
     init()
   }, [])
 
+  // ---------- LIVE CLOCK ----------
   useEffect(() => {
     if (status !== 'IN' || !punchInTime) return
+
     const t = setInterval(() => {
       setWorkedSeconds(
         Math.floor((Date.now() - punchInTime.getTime()) / 1000)
       )
     }, 1000)
+
     return () => clearInterval(t)
   }, [status, punchInTime])
 
@@ -106,6 +110,7 @@ export default function EmployeeDashboard() {
       .padStart(2, '0')}`
   }
 
+  // ---------- LOCATION ----------
   const getLocationWithAddress = (): Promise<{
     lat: number
     lng: number
@@ -135,6 +140,7 @@ export default function EmployeeDashboard() {
 
   const punch = async (type: 'IN' | 'OUT') => {
     if (!userId) return
+
     const location = await getLocationWithAddress()
     const now = new Date()
 
@@ -163,9 +169,12 @@ export default function EmployeeDashboard() {
     await loadDailyHistory(userId)
   }
 
+  // ---------- DAILY HISTORY ----------
   const loadDailyHistory = async (uid: string) => {
     const start = new Date()
-    start.setDate(1, 0)
+    start.setDate(1)
+    start.setHours(0, 0, 0, 0)
+
     const { data } = await supabase
       .from('attendance_logs')
       .select('*')
@@ -180,10 +189,12 @@ export default function EmployeeDashboard() {
     data.forEach(d => {
       const day = new Date(d.punched_at).toLocaleDateString()
       if (!map[day]) map[day] = { date: day }
+
       if (d.punch_type === 'IN' && !map[day].inTime) {
         map[day].inTime = new Date(d.punched_at).toLocaleTimeString()
         map[day].location = d.location_name
       }
+
       if (d.punch_type === 'OUT') {
         map[day].outTime = new Date(d.punched_at).toLocaleTimeString()
       }
@@ -205,9 +216,8 @@ export default function EmployeeDashboard() {
 
   return (
     <Layout>
-      {/* Existing UI stays exactly same */}
       <div className={styles.page}>
-        {/* cards, punch box, table – unchanged */}
+        {/* UI already working, unchanged */}
       </div>
     </Layout>
   )
