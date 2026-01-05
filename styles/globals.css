@@ -2,8 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* 🔥 HARD TEST */
 body {
-  background-color: red !important;
-  color: white !important;
+  background-color: #F7F7F5;
+  color: #2F3437;
 }
